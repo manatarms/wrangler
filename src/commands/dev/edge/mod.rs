@@ -8,6 +8,7 @@ use crate::commands::dev::{socket, ServerConfig};
 use crate::settings::global_user::GlobalUser;
 use crate::settings::toml::{DeployConfig, Target};
 
+use http::Request;
 use tokio::runtime::Runtime as TokioRuntime;
 
 pub fn dev(
@@ -20,9 +21,9 @@ pub fn dev(
     let init = setup::init(&deploy_config, &user)?;
     let mut target = target.clone();
     let host = match deploy_config {
-        DeployConfig::Zoned(_) => host,
+        DeployConfig::Zoned(_) => init.exchange_host.clone(),
         DeployConfig::Zoneless(_) => {
-            let namespaces: Vec<&str> = host.split('.').collect();
+            let namespaces: Vec<&str> = init.exchange_host.split('.').collect();
             let subdomain = namespaces[1];
             format!("{}.{}.workers.dev", target.name, subdomain)
         }
@@ -34,11 +35,16 @@ pub fn dev(
     // TODO: ws://{your_zone}/cdn-cgi/workers/preview/inspector
     // also need to send init.ws_token as cf-workers-preview-token on init
     let socket_url = format!(
-        "wss://rawhttp.cloudflareworkers.com/inspect/{}",
-        init.ws_token
+        "ws://{}/cdn-cgi/workers/preview/inspector",
+        init.exchange_host
     );
-    let socket_url = Url::parse(&socket_url)?;
-    let devtools_listener = socket::listen(socket_url);
+    println!("{}", socket_url);
+    let socket_request = Request::builder()
+        .uri(socket_url)
+        .header("cf-workers-preview-token", init.ws_token)
+        .body(())
+        .unwrap();
+    let devtools_listener = socket::listen(socket_request);
 
     let server = serve(server_config, preview_token, host);
 

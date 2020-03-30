@@ -46,7 +46,7 @@ pub(super) fn init(
     user: &GlobalUser,
 ) -> Result<InitResponse, failure::Error> {
     let (exchange_url, ws_token) = get_initial_setup(deploy_config, user)?;
-    let exchange_url = exchange_url.host_str().expect("Could not get host string, please file an issue at https://github.com/cloudflare/wrangler").to_string();
+    let exchange_host = exchange_url.host_str().expect("Could not get host string, please file an issue at https://github.com/cloudflare/wrangler").to_string();
     let client = http::auth_client(None, &user);
     let response = client
         .get(exchange_url.clone())
@@ -54,21 +54,20 @@ pub(super) fn init(
         .error_for_status()?;
     let headers = response.headers();
     let preview_token = headers.get("cf-workers-preview-token");
-    let preview_token = preview_token.to_str()?.to_string();
     match preview_token {
         Some(preview_token) => Ok(InitResponse {
-            preview_token,
+            preview_token: preview_token.to_str()?.to_string(),
             ws_token,
-            exchange_url,
+            exchange_host,
         }),
         None => failure::bail!("Could not get token to initialize preview session"),
     }
 }
 
-struct InitResponse {
+pub struct InitResponse {
     pub preview_token: String,
     pub ws_token: String,
-    pub exchange_url: String,
+    pub exchange_host: String,
 }
 
 fn get_session_config(deploy_config: &DeployConfig) -> serde_json::Value {

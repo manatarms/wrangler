@@ -14,8 +14,8 @@ use crate::settings::toml::Target;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use http::Request;
 use tokio::runtime::Runtime as TokioRuntime;
-use url::Url;
 
 pub fn dev(
     target: Target,
@@ -49,8 +49,8 @@ pub fn dev(
         });
     }
     let socket_url = format!("wss://rawhttp.cloudflareworkers.com/inspect/{}", session_id);
-    let socket_url = Url::parse(&socket_url)?;
-    let devtools_listener = socket::listen(socket_url);
+    let socket_request = Request::builder().uri(socket_url).body(()).unwrap();
+    let devtools_listener = socket::listen(socket_request);
     let server = serve(server_config, Arc::clone(&preview_id));
 
     let runners = futures::future::join(devtools_listener, server);
