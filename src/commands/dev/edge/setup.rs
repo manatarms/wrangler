@@ -17,7 +17,7 @@ pub(super) fn upload(
     user: &GlobalUser,
     preview_token: String,
 ) -> Result<String, failure::Error> {
-    let client = http::auth_client(None, &user);
+    let client = http::legacy_auth_client(&user);
     if target.site.is_some() {
         publish::add_site_namespace(user, target, true)?;
     }
@@ -47,7 +47,7 @@ pub(super) fn init(
 ) -> Result<InitResponse, failure::Error> {
     let (exchange_url, ws_token) = get_initial_setup(deploy_config, user)?;
     let exchange_host = exchange_url.host_str().expect("Could not get host string, please file an issue at https://github.com/cloudflare/wrangler").to_string();
-    let client = http::auth_client(None, &user);
+    let client = http::legacy_auth_client(&user);
     let response = client
         .get(exchange_url.clone())
         .send()?
@@ -108,7 +108,7 @@ fn get_initial_setup(
     deploy_config: &DeployConfig,
     user: &GlobalUser,
 ) -> Result<(Url, String), failure::Error> {
-    let client = http::auth_client(None, &user);
+    let client = http::legacy_auth_client(&user);
     let address = get_initialize_address(deploy_config);
     let url = Url::parse(&address)?;
     let response = client.get(url).send()?.error_for_status()?;
