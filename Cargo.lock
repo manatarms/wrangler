@@ -2862,6 +2862,7 @@ dependencies = [
  "term_size",
  "text_io",
  "tokio",
+ "tokio-tls",
  "tokio-tungstenite",
  "toml",
  "twox-hash",

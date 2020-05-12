@@ -3,11 +3,15 @@ use std::time::Duration;
 use chrome_devtools as protocol;
 
 use futures_util::sink::SinkExt;
-use futures_util::stream::StreamExt;
+use futures_util::stream::{SplitStream, StreamExt};
 
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::delay_for;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio_tls::TlsStream;
+use tokio_tungstenite::stream::Stream;
+use tokio_tungstenite::tungstenite::Error as TungsteniteError;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream};
 
 use url::Url;
 
@@ -40,24 +44,38 @@ pub async fn listen(session_id: String) -> Result<(), failure::Error> {
     tokio::spawn(keep_alive(keep_alive_tx));
     let keep_alive_to_ws = keep_alive_rx.map(Ok).forward(write);
 
-    // parse every incoming message and print them
-    let print_ws_messages = {
-        read.for_each(|message| async {
-            let message = message.unwrap().into_text().unwrap();
-            log::info!("{}", message);
-            let message: Result<protocol::Runtime, failure::Error> = serde_json::from_str(&message)
-                .map_err(|e| failure::format_err!("this event could not be parsed:\n{}", e));
-            if let Ok(protocol::Runtime::Event(event)) = message {
-                println!("{}", event);
-            }
-        })
-    };
+    // parse all incoming messages and print them to stdout
+    let printer = tokio::spawn(print_ws_messages(&mut read));
 
     // run the heartbeat and message printer in parallel
-    tokio::select! {
-        _ = keep_alive_to_ws => { Ok(()) }
-        _ = print_ws_messages => { Ok(()) }
+    let res = tokio::try_join!(async {printer.await}, keep_alive_to_ws);
+
+    match res {
+        Ok(_) => Ok(()),
+        Err(_) => listen(session_id),
     }
+}
+
+async fn print_ws_messages(
+    read: &mut SplitStream<WebSocketStream<Stream<TcpStream, TlsStream<TcpStream>>>>,
+) -> Result<(), TungsteniteError> {
+    while let Some(message) = read.next().await {
+        match message {
+            Ok(message) => {
+                let message_text = message.into_text().unwrap();
+                log::info!("{}", message_text);
+                let parsed_message: Result<protocol::Runtime, failure::Error> =
+                    serde_json::from_str(&message_text).map_err(|e| {
+                        failure::format_err!("this event could not be parsed:\n{}", e)
+                    });
+                if let Ok(protocol::Runtime::Event(event)) = parsed_message {
+                    println!("{}", event);
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }
 
 async fn keep_alive(tx: mpsc::UnboundedSender<Message>) -> ! {
